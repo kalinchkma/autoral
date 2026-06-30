@@ -1,0 +1,1 @@
+## Firmware for controlling ESP32 pins using rule based system
