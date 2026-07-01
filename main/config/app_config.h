@@ -64,4 +64,5 @@
 #define MQTT_CLIENT_ID "autoral_client_001"
 #define MQTT_KEEPALIVE 60
 #define MQTT_RETRY_INTERVAL_MS 5000
+#define MQTT_MSG_QUEUE_SIZE 10
 
