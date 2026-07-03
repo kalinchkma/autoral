@@ -5,6 +5,7 @@
 #include "connectivity/mqtt_manager.h"
 #include "config/app_config.h"
 #include "system/app_task.h"
+#include "connectivity/ble_mesh_manager.h"
 
 static const char* TAG = "MAIN";
 
@@ -67,6 +68,13 @@ void app_main(void)
     //     vTaskDelete(NULL);
     //     return;
     // }
+    // Test mesh init 
+    ret = mesh_init();
+    if (ret != ESP_OK) 
+    {
+        APP_LOGE(TAG, "Failed to initialized mesh");
+        return;
+    }
 
     // Initialize application tasks
     ret = app_task_init();

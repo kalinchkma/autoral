@@ -16,7 +16,6 @@ endforeach()
 # Remove duplicate paths to keep the compiler flags clean
 list(REMOVE_DUPLICATES include_dirs)
 
-# 3. Register everything into the component
 idf_component_register(
     SRCS ${app_sources}
     INCLUDE_DIRS ${include_dirs}
