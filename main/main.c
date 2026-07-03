@@ -40,35 +40,9 @@ void app_main(void)
         return;
     }
 
-    // // =========================================================================
-    // // Wait for WIFI connection before starting MQTT
-    // // =========================================================================
-    // ESP_LOGI(TAG, "Waiting for WiFi connection...");
-    // EventBits_t bits = xEventGroupWaitBits(
-    //     wifi_get_event_group(),
-    //     WIFI_CONNECTED_BIT,
-    //     pdFALSE,
-    //     pdTRUE,
-    //     pdMS_TO_TICKS(WIFI_CONNECT_TIMEOUT_MS)
-    // );
-
-    // if (!(bits & WIFI_CONNECTED_BIT)) {
-    //     APP_LOGE(TAG, "WiFi connection timed out");
-    //     return;
-    // }
-
-    // APP_LOGI(TAG, "WiFi connected, starting MQTT...");
-
-    // // =========================================================================
-    // // Initialize MQTT
-    // // =========================================================================
-    // ret = mqtt_init_and_start();
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "Failed to initialize MQTT: %s", esp_err_to_name(ret));
-    //     vTaskDelete(NULL);
-    //     return;
-    // }
-    // Test mesh init 
+    // =========================================================================
+    // Initialize BLE Mesh
+    // =========================================================================
     ret = mesh_init();
     if (ret != ESP_OK) 
     {

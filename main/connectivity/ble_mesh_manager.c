@@ -14,8 +14,9 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include <string.h>
+#include "app_logging.h"
 
-#define TAG "BLE_MESH_UTILS"
+#define TAG "BLE_MESH"
 #define MESH_RX_QUEUE_LEN 15
 #define MESH_MAX_DATA_LEN  128  // reasonable default payload size
 
@@ -42,23 +43,23 @@ static void _invoke_user_cb(const mesh_packet_t *pkt)
 static esp_err_t _enqueue_packet(uint16_t src, const uint8_t *data, uint16_t len)
 {
     if (!s_rx_queue) {
-        ESP_LOGW(TAG, "RX queue not initialized");
+        APP_LOGW(TAG, "RX queue not initialized");
         return ESP_ERR_INVALID_STATE;
     }
     if (len > MESH_MAX_DATA_LEN) {
-        ESP_LOGW(TAG, "Payload too large (%u > %d)", len, MESH_MAX_DATA_LEN);
+        APP_LOGW(TAG, "Payload too large (%u > %d)", len, MESH_MAX_DATA_LEN);
         return ESP_ERR_INVALID_SIZE;
     }
     mesh_packet_t *pkt = (mesh_packet_t *)malloc(sizeof(mesh_packet_t));
     if (!pkt) {
-        ESP_LOGE(TAG, "Failed to allocate memory for mesh packet");
+        APP_LOGE(TAG, "Failed to allocate memory for mesh packet");
         return ESP_ERR_NO_MEM;
     }
     pkt->src_addr = src;
     pkt->len = len;
     memcpy(pkt->data, data, len);
     if (xQueueSend(s_rx_queue, &pkt, 0) != pdTRUE) {
-        ESP_LOGW(TAG, "RX queue full, dropping packet");
+        APP_LOGW(TAG, "RX queue full, dropping packet");
         free(pkt);
         return ESP_ERR_NO_MEM;
     }
@@ -89,18 +90,18 @@ static void _prov_cb(esp_ble_mesh_prov_cb_event_t event,
 {
     switch (event) {
     case ESP_BLE_MESH_NODE_PROV_COMPLETE_EVT:
-        ESP_LOGI(TAG, "Provisioning complete, addr: 0x%04x",
+        APP_LOGI(TAG, "Provisioning complete, addr: 0x%04x",
                  param->node_prov_complete.addr);
         break;
     case ESP_BLE_MESH_PROVISIONER_PROV_COMPLETE_EVT:
-        ESP_LOGI(TAG, "Provisioner: node provisioned, addr: 0x%04x",
+        APP_LOGI(TAG, "Provisioner: node provisioned, addr: 0x%04x",
                  param->provisioner_prov_complete.unicast_addr);
         break;
     case ESP_BLE_MESH_NODE_PROV_RESET_EVT:
-        ESP_LOGW(TAG, "Node provisioning reset");
+        APP_LOGW(TAG, "Node provisioning reset");
         break;
     default:
-        ESP_LOGD(TAG, "Prov event %d", event);
+        APP_LOGD(TAG, "Prov event %d", event);
         break;
     }
 }
@@ -112,10 +113,16 @@ static void _prov_cb(esp_ble_mesh_prov_cb_event_t event,
 #define VENDOR_COMPANY_ID   0xFFFF
 #define VENDOR_MODEL_ID     0x0001
 
-/* Vendor model opcodes */
+/* Vendor model opcodes — must be 3-byte (company_id << 16 | opcode) in the
+   model op table, per BLE Mesh spec. The 1-byte raw values are used in
+   mesh_send() for the wire format. */
 #define VENDOR_OPCODE_SET   0xC1
 #define VENDOR_OPCODE_GET   0xC2
 #define VENDOR_OPCODE_STATUS 0xC3
+
+/* Full 3-byte opcodes for the model op table */
+#define VENDOR_OPCODE_SET_FULL   ((VENDOR_COMPANY_ID << 16) | VENDOR_OPCODE_SET)
+#define VENDOR_OPCODE_GET_FULL   ((VENDOR_COMPANY_ID << 16) | VENDOR_OPCODE_GET)
 
 static esp_ble_mesh_client_t config_client;
 
@@ -130,10 +137,10 @@ static esp_ble_mesh_cfg_srv_t config_server = {
     .relay_retransmit = ESP_BLE_MESH_TRANSMIT(3, 20),
 };
 
-/* Vendor-specific models */
+/* Vendor-specific models — opcodes MUST be 3-byte in the op table */
 static esp_ble_mesh_model_op_t vendor_op[] = {
-    ESP_BLE_MESH_MODEL_OP(VENDOR_OPCODE_SET, 2),
-    ESP_BLE_MESH_MODEL_OP(VENDOR_OPCODE_GET, 1),
+    ESP_BLE_MESH_MODEL_OP(VENDOR_OPCODE_SET_FULL, 2),
+    ESP_BLE_MESH_MODEL_OP(VENDOR_OPCODE_GET_FULL, 1),
     ESP_BLE_MESH_MODEL_OP_END,
 };
 
@@ -163,7 +170,9 @@ static esp_ble_mesh_prov_t provision = {
 
 esp_err_t mesh_init(void)
 {
+    APP_LOGI(TAG, "Initializing BLE Mesh utils");
     if (s_rx_queue) {
+        APP_LOGI(TAG, "BLE Mesh already initialized");
         return ESP_OK; // already init
     }
 
@@ -173,59 +182,75 @@ esp_err_t mesh_init(void)
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     err = esp_bt_controller_init(&bt_cfg);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "Bluetooth controller init failed: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "Bluetooth controller init failed: %s", esp_err_to_name(err));
         return err;
+    } else {
+        APP_LOGI(TAG, "Bluetooth controller initialized");
     }
 
     err = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "Bluetooth controller enable failed: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "Bluetooth controller enable failed: %s", esp_err_to_name(err));
         return err;
+    } else {
+        APP_LOGI(TAG, "Bluetooth controller enabled");
     }
 
     // 2. Initialize Bluedroid host
     err = esp_bluedroid_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "Bluedroid init failed: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "Bluedroid init failed: %s", esp_err_to_name(err));
         return err;
+    } else {
+        APP_LOGI(TAG, "Bluedroid initialized");
     }
 
     err = esp_bluedroid_enable();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(err));
         return err;
+    } else {
+        APP_LOGI(TAG, "Bluedroid enabled");
     }
 
     // 3. Initialize BLE Mesh stack
     err = esp_ble_mesh_init(&provision, &composition);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "esp_ble_mesh_init failed: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "esp_ble_mesh_init failed: %s", esp_err_to_name(err));
         return err;
+    } else {
+        APP_LOGI(TAG, "BLE Mesh stack initialized");
     }
 
     // 4. Register provisioning callback
     err = esp_ble_mesh_register_prov_callback(_prov_cb);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to register prov callback: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "Failed to register prov callback: %s", esp_err_to_name(err));
         return err;
+    } else {
+        APP_LOGI(TAG, "Provisioning callback registered");
     }
 
     s_rx_queue = xQueueCreate(MESH_RX_QUEUE_LEN, sizeof(mesh_packet_t *));
     if (!s_rx_queue) {
-        ESP_LOGE(TAG, "Failed to create RX queue");
+        APP_LOGE(TAG, "Failed to create RX queue");
         return ESP_ERR_NO_MEM;
+    } else {
+        APP_LOGI(TAG, "RX queue created (depth %d)", MESH_RX_QUEUE_LEN);
     }
 
     /* Register a generic model callback that will be invoked for all vendor models. */
     err = esp_ble_mesh_register_custom_model_callback(_model_op_cb);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to register custom model callback: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "Failed to register custom model callback: %s", esp_err_to_name(err));
         vQueueDelete(s_rx_queue);
         s_rx_queue = NULL;
         return err;
+    } else {
+        APP_LOGI(TAG, "Custom model callback registered");
     }
 
-    ESP_LOGI(TAG, "BLE Mesh utils initialized (queue depth %d)", MESH_RX_QUEUE_LEN);
+    APP_LOGI(TAG, "BLE Mesh utils initialized (queue depth %d)", MESH_RX_QUEUE_LEN);
     return ESP_OK;
 }
 
@@ -244,12 +269,12 @@ esp_err_t mesh_start_provisioner(bool primary_role)
     }
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to enable %s: %s",
+        APP_LOGE(TAG, "Failed to enable %s: %s",
                  primary_role ? "provisioner" : "node",
                  esp_err_to_name(err));
         return err;
     }
-    ESP_LOGI(TAG, "Provisioning started (%s)",
+    APP_LOGI(TAG, "Provisioning started (%s)",
              primary_role ? "provisioner" : "node");
     return ESP_OK;
 }
@@ -260,14 +285,14 @@ esp_err_t mesh_set_send_model(void *model)
         return ESP_ERR_INVALID_ARG;
     }
     s_send_model = (esp_ble_mesh_model_t *)model;
-    ESP_LOGI(TAG, "Send model set (addr %p)", s_send_model);
+    APP_LOGI(TAG, "Send model set (addr %p)", s_send_model);
     return ESP_OK;
 }
 
 esp_err_t mesh_send(uint16_t dst, const uint8_t *data, size_t len)
 {
     if (!s_send_model) {
-        ESP_LOGE(TAG, "Send model not set");
+        APP_LOGE(TAG, "Send model not set");
         return ESP_ERR_INVALID_STATE;
     }
     if (len > UINT16_MAX) {
@@ -293,9 +318,9 @@ esp_err_t mesh_send(uint16_t dst, const uint8_t *data, size_t len)
         ROLE_NODE
     );
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "mesh_send failed: %s", esp_err_to_name(err));
+        APP_LOGE(TAG, "mesh_send failed: %s", esp_err_to_name(err));
     } else {
-        ESP_LOGI(TAG, "Sent %zu bytes to 0x%04x", len, dst);
+        APP_LOGI(TAG, "Sent %zu bytes to 0x%04x", len, dst);
     }
     return err;
 }
@@ -303,7 +328,7 @@ esp_err_t mesh_send(uint16_t dst, const uint8_t *data, size_t len)
 esp_err_t mesh_forward(uint16_t src_addr, const uint8_t *data, size_t len, uint16_t next_hop)
 {
     // Logging the forward action
-    ESP_LOGI(TAG, "Forwarding %zu bytes from 0x%04x to 0x%04x", len, src_addr, next_hop);
+    APP_LOGI(TAG, "Forwarding %zu bytes from 0x%04x to 0x%04x", len, src_addr, next_hop);
     // For now, forwarding just re‑uses mesh_send
     return mesh_send(next_hop, data, len);
 }
@@ -311,7 +336,7 @@ esp_err_t mesh_forward(uint16_t src_addr, const uint8_t *data, size_t len, uint1
 esp_err_t mesh_register_data_cb(mesh_data_cb_t cb)
 {
     s_user_cb = cb;
-    ESP_LOGI(TAG, "User data callback %sregistered", cb ? "" : "de");
+    APP_LOGI(TAG, "User data callback %sregistered", cb ? "" : "de");
     return ESP_OK;
 }
 
@@ -328,7 +353,7 @@ void mesh_deinit(void)
     }
     s_user_cb = NULL;
     s_send_model = NULL;
-    ESP_LOGI(TAG, "BLE Mesh utils de‑initialized");
+    APP_LOGI(TAG, "BLE Mesh utils de‑initialized");
 }
 
 /* ------------------------------------------------------------------------- */
