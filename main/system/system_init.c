@@ -5,7 +5,7 @@
 
 #include "system_init.h"
 #include "app_logging.h"
-#include "nvs_flash.h"
+#include "utils/nvs_utils.h"
 #include "esp_flash.h"
 #include "esp_chip_info.h"
 #include "app_config.h"
@@ -14,23 +14,7 @@ static const char* TAG = "SYSTEM_INIT";
 
 esp_err_t nvs_init(void)
 {
-    APP_LOGI(TAG, "Initializing NVS (Non-Volatile Storage)...");
-    
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // NVS partition was truncated and needs to be erased
-        APP_LOGW(TAG, "NVS partition was truncated, erasing...");
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    
-    if (ret == ESP_OK) {
-        APP_LOGI(TAG, "NVS initialized successfully");
-    } else {
-        APP_LOGE(TAG, "Failed to initialize NVS: %s", esp_err_to_name(ret));    
-    }
-   
-    return ret;
+    return nvs_util_flash_init();
 }
 
 esp_err_t gpio_init(void)

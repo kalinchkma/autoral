@@ -8,6 +8,7 @@
 #include "mqtt_manager.h"
 #include "app_logging.h"
 #include "app_config.h"
+#include "config/credentials.h"
 #include "mqtt_client.h"
 #include <stdlib.h>
 #include <string.h>
@@ -32,14 +33,28 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     switch ((esp_mqtt_event_id_t)event_id)
     {
         case MQTT_EVENT_CONNECTED:
+        {
             APP_LOGI(TAG, "Connected to MQTT broker");
             s_state = MQTT_STATE_CONNECTED;
 
-            msg_id = esp_mqtt_client_subscribe(client, MQTT_TOPIC_COMMANDS, 1);
-            APP_LOGI(TAG, "Subscribed to topic %s, msg_id=%d", MQTT_TOPIC_COMMANDS, msg_id);
+            /* Subscribe to commands topic from credential store */
+            cred_mqtt_t mc = {0};
+            cred_mqtt_get(&mc);
+            const char *cmd_topic = (mc.topic_commands[0]) ? mc.topic_commands : MQTT_TOPIC_COMMANDS;
+            const char *status_topic = (mc.topic_status[0]) ? mc.topic_status : MQTT_TOPIC_STATUS;
 
-            mqtt_publish(MQTT_TOPIC_STATUS, "online", 6, 1);
+            msg_id = esp_mqtt_client_subscribe(client, cmd_topic, 1);
+            APP_LOGI(TAG, "Subscribed to topic %s, msg_id=%d", cmd_topic, msg_id);
+
+            /* Subscribe to engine rule topics */
+            esp_mqtt_client_subscribe(client, "autoral/engine/rules/set", 1);
+            esp_mqtt_client_subscribe(client, "autoral/engine/rules/get", 1);
+            esp_mqtt_client_subscribe(client, "autoral/engine/rules/delete", 1);
+            APP_LOGI(TAG, "Subscribed to engine rule topics");
+
+            mqtt_publish(status_topic, "online", 6, 1);
             break;
+        }
 
         case MQTT_EVENT_DISCONNECTED:
             APP_LOGW(TAG, "Disconnected from MQTT broker");
@@ -131,21 +146,28 @@ esp_err_t mqtt_init_and_start(void)
         APP_LOGI(TAG, "MQTT message queue created (size: %d)", MQTT_MSG_QUEUE_SIZE);
     }
 
+    // Get MQTT credentials from store
+    cred_mqtt_t mqtt_cred = {0};
+    if (cred_mqtt_get(&mqtt_cred) != ESP_OK || mqtt_cred.uri[0] == '\0') {
+        APP_LOGE(TAG, "No MQTT credentials stored");
+        return ESP_ERR_NOT_FOUND;
+    }
+
     const esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
             .address = {
-                .uri = MQTT_BROKER_URI
+                .uri = mqtt_cred.uri,
             }
         },
         .credentials = {
-            .client_id = MQTT_CLIENT_ID,
-            .username = MQTT_USERNAME,
+            .client_id = mqtt_cred.client_id[0] ? mqtt_cred.client_id : MQTT_CLIENT_ID,
+            .username = mqtt_cred.username[0] ? mqtt_cred.username : NULL,
             .authentication = {
-                .password = MQTT_PASSWORD,
+                .password = mqtt_cred.password[0] ? mqtt_cred.password : NULL,
             }
         },
         .session = {
-            .keepalive = MQTT_KEEPALIVE
+            .keepalive = mqtt_cred.keepalive ? mqtt_cred.keepalive : MQTT_KEEPALIVE
         },
         .network = {
             .reconnect_timeout_ms = MQTT_RETRY_INTERVAL_MS,

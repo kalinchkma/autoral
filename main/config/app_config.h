@@ -17,9 +17,22 @@
 #define CONTROL_TASK_PRIORITY 6
 #define LOGGING_TASK_PRIORITY 3
 
-#define WIFI_TASK_STACK_SIZE (4096)
-#define MQTT_TASK_STACK_SIZE (4096)
-#define CONTROL_TASK_STACK_SIZE (2048)
+#define WIFI_TASK_STACK_SIZE (8192)
+#define MQTT_TASK_STACK_SIZE (8192)
+#define CONTROL_TASK_STACK_SIZE (4096)
+
+// =================================
+// ENGINE CONFIGURATION
+// =================================
+#define ENGINE_MAX_SOURCES          16
+#define ENGINE_MAX_TARGETS          16
+#define ENGINE_MAX_PARAMS           8
+#define ENGINE_MAX_RULES            16
+#define ENGINE_MAX_CONDITIONS       8
+#define ENGINE_MAX_ACTIONS          4
+#define ENGINE_EVAL_INTERVAL_MS     100
+#define ENGINE_DEBOUNCED_DEFAULT    5
+#define ENGINE_COOLDOWN_DEFAULT     50
 
 // =================================
 // STORAGE & NVS CONFIGURATION
@@ -55,7 +68,7 @@
 // MQTT Configuration
 // ===============================
 // #define MQTT_BROKER_URI "mqtt://broker.hivemq.com"
-#define MQTT_BROKER_URI "mqtt://your-server.com"
+#define MQTT_BROKER_URI "mqtt://192.168.0.102:1883"
 #define MQTT_TOPIC_COMMANDS "autoral_client"
 #define MQTT_TOPIC_STATUS "autoral_status"
 #define MQTT_TOPIC_TELEMETRY "autoral_telemetry"

@@ -5,6 +5,7 @@
 
 #include "wifi_manager.h"
 #include "config/app_config.h"
+#include "config/credentials.h"
 #include "utils/app_logging.h"
 #include "esp_event.h"
 #include "esp_wifi.h"
@@ -82,15 +83,21 @@ esp_err_t wifi_init_sta(void)
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
-    // Set Wifi configuration
+    // Set Wifi configuration from credential store
+    cred_wifi_t wifi_cred = {0};
+    if (cred_wifi_get(&wifi_cred) != ESP_OK || wifi_cred.ssid[0] == '\0') {
+        APP_LOGE(TAG, "No WiFi credentials stored");
+        return ESP_ERR_NOT_FOUND;
+    }
+
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = WIFI_SSID,
-            .password = WIFI_PASSWORD,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
             .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
         }
     };
+    strncpy((char *)wifi_config.sta.ssid, wifi_cred.ssid, sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char *)wifi_config.sta.password, wifi_cred.password, sizeof(wifi_config.sta.password) - 1);
 
     // Set Wifi mode and configuration
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
